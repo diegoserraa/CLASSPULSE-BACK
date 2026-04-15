@@ -1,0 +1,47 @@
+### ===============================
+### CONFIG
+### ===============================
+
+@baseUrl = http://localhost:3000
+@token = {{login.response.body.token}}
+
+### ===============================
+### 1️⃣ CRIAR USUÁRIO
+### ===============================
+
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjNjZGUyMzM0LWYwYTItNDc4NC04ZjU2LTg3NmNjMGQ5MDFjMiIsImlhdCI6MTc3NTgzNjcxMSwiZXhwIjoxNzc1ODQzOTExfQ.lFAlyh3tYAejOySP9Fvvr4QrTjERXjrm3keNamMk1XE
+
+{
+"email": "teste@hotmail.com",
+"nome": "Teste",
+"password": "1020304050"
+}
+
+###
+
+### ===============================
+### 2️⃣ LOGIN
+### ===============================
+
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "diego@hotmail.com",
+  "password": "1020304050"
+}
+
+###
+
+### ===============================
+### 3️⃣ TESTAR ROTA PROTEGIDA (exemplo)
+### ===============================
+
+GET {{baseUrl}}/auth/users
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+###

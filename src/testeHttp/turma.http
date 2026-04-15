@@ -1,0 +1,93 @@
+### 🔹 Criar turma
+POST http://localhost:3000/turmas
+Content-Type: application/json
+
+{
+  "nome_original": "Informatica para internet",
+  "nome_fantasia": "Os Invencíveis",
+  "foto_url": "https://exemplo.com/foto.jpg"
+}
+
+###
+
+### 🔹 Criar outra turma
+POST http://localhost:3000/turmas
+Content-Type: application/json
+
+{
+  "nome_original": "Desenvolvimeto de SitemasDEDEDE",
+  "nome_fantasia": "Os Feras",
+  "foto_url": "https://exemplo.com/foto2.jpg"
+}
+
+###
+
+### 🔹 Listar todas (USADO NO SELECT)
+GET http://localhost:3000/turmas
+
+###
+
+### 🔹 Buscar turma por ID
+GET http://localhost:3000/turmas/1
+
+###
+
+### 🔹 Atualizar turma
+PUT http://localhost:3000/turmas/2
+Content-Type: application/json
+
+{
+  "nome_original": "DESENVOLVIMENTO DE SISTEMAS SISTEMAS",
+  "nome_fantasia": "Os Campeões",
+  "foto_url": "https://exemplo.com/nova-foto.jpg"
+}
+
+###
+
+### 🔹 Atualizar só nome fantasia
+PUT http://localhost:3000/turmas/1
+Content-Type: application/json
+
+{
+  "nome_original": "3º Ano A",
+  "nome_fantasia": "Elite 3A",
+  "foto_url": null
+}
+
+###
+
+### 🔹 Deletar turma
+DELETE http://localhost:3000/turmas/1
+
+###
+
+### 🔹 Teste erro (nome duplicado)
+POST http://localhost:3000/turmas
+Content-Type: application/json
+
+{
+  "nome_original": "3º Ano A"
+}
+
+### 🔹 Teste listar turmas para select
+GET http://localhost:3000/turmas/select
+Accept: application/json
+
+###
+
+### 🔹 Teste ativar/inativar turma
+PATCH http://localhost:3000/turmas/2/ativo
+Content-Type: application/json
+
+{
+  "ativo": false
+}
+
+###
+### 🔹 Teste reativar turma
+PATCH http://localhost:3000/turmas/2/ativo
+Content-Type: application/json
+
+{
+  "ativo": true
+}

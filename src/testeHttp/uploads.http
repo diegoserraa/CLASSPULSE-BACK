@@ -1,0 +1,34 @@
+### Upload planilhas
+POST http://localhost:3000/upload/planilhas
+Content-Type: multipart/form-data; boundary=MyBoundary
+
+--MyBoundary
+Content-Disposition: form-data; name="alunos"; filename="alunos.csv"
+Content-Type: text/csv
+
+< ./alunos.csv
+--MyBoundary
+Content-Disposition: form-data; name="faltas"; filename="faltas.csv"
+Content-Type: text/csv
+
+< ./faltas.csv
+--MyBoundary--
+
+###
+DELETE http://localhost:3000/upload/79b0bd9f-84a3-4643-b697-0d56f35a2b8e
+
+### Buscar ultimo lote automaticamente
+GET http://localhost:3000/upload/conciliacao
+###
+### Buscar por lote
+GET http://localhost:3000/upload/conciliacao?lote=66a7cc09-3c0e-4747-97d8-1e1beca34315
+###
+### Buscar por turma
+GET http://localhost:3000/upload/conciliacao?turma_id=2
+
+###
+### Buscar por data
+GET http://localhost:3000/upload/conciliacao?data=2026-03-20
+
+### Buscar somente quem recebeu email
+GET http://localhost:3000/upload/conciliacao?email_enviado=false

@@ -1,0 +1,103 @@
+### =========================================
+### 🚀 1. UPLOAD SEMANAL (GERA DADOS)
+### =========================================
+POST http://localhost:3000/ranking/semanal
+Content-Type: multipart/form-data; boundary=MyBoundary
+
+--MyBoundary
+Content-Disposition: form-data; name="turma_id"
+
+2
+--MyBoundary
+Content-Disposition: form-data; name="data_inicio"
+
+2026-03-14
+--MyBoundary
+Content-Disposition: form-data; name="data_fim"
+
+2026-03-18
+--MyBoundary
+Content-Disposition: form-data; name="dias_aula"
+
+4
+--MyBoundary
+Content-Disposition: form-data; name="arquivo_base"; filename="BASE.xlsx"
+Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+
+< BASE.xlsx
+--MyBoundary
+Content-Disposition: form-data; name="arquivo_faltas"; filename="FALTAS.xlsx"
+Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+
+< FALTAS.xlsx
+--MyBoundary--
+
+
+### =========================================
+### 📊 2. TABELA GESTOR (SEM FILTRO)
+### =========================================
+GET http://localhost:3000/ranking/tabela
+Content-Type: application/json
+
+
+### =========================================
+### 📊 3. TABELA FILTRADA POR TURMA
+### =========================================
+GET http://localhost:3000/ranking/tabela?turmaId=2
+Content-Type: application/json
+
+
+### =========================================
+### 📅 4. TABELA FILTRADA POR DATA
+### =========================================
+GET http://localhost:3000/ranking/tabela?dataInicio=2026-03-01&dataFim=2026-03-31
+Content-Type: application/json
+
+
+### =========================================
+### 📊 5. TABELA COMPLETA (TUDO JUNTO)
+### =========================================
+GET http://localhost:3000/ranking/tabela?turmaId=2&dataInicio=2026-03-01&dataFim=2026-03-31
+Content-Type: application/json
+
+
+### =========================================
+### 🏆 6. RANKING SEMANAL (TELA GAMER)
+
+### =========================================
+GET http://localhost:3000/ranking?tipo=semanal
+Content-Type: application/json
+
+
+### =========================================
+### 🟣 7. RANKING MENSAL (ACUMULADO)
+### =========================================
+GET http://localhost:3000/ranking?tipo=mensal
+Content-Type: application/json
+
+
+### =========================================
+### 📅 8. RANKING SEMANAL COM DATA
+### =========================================
+GET http://localhost:3000/ranking?tipo=semanal
+Content-Type: application/json
+
+
+### =========================================
+### 📅 9. RANKING MENSAL COM DATA
+### =========================================
+GET http://localhost:3000/ranking?tipo=mensal
+Content-Type: application/json
+
+
+### =========================================
+### ⚡ 10. DEFAULT (SEM TIPO = SEMANAL)
+### =========================================
+GET http://localhost:3000/ranking
+Content-Type: application/json
+
+### =========================================
+### ❌ DELETAR UMA LINHA
+### =========================================
+DELETE http://localhost:3000/ranking/2
+Content-Type: application/json
