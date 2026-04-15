@@ -5,10 +5,3 @@ Authorization: Bearer SEU_TOKEN_AQUI
 
 
 ### 🔐 Atualizar tema ativo
-PUT http://localhost:3000/tema/tema-ativo
-Content-Type: application/json
-Authorization: Bearer SEU_TOKEN_AQUI
-
-{
-  "tema": "tema2"
-}
