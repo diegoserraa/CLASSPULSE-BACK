@@ -1,12 +1,19 @@
 const { Pool } = require("pg");
-require('dotenv').config();
+require("dotenv").config();
+
+const isProduction = process.env.NODE_ENV === "production";
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
- 
-  ssl: { rejectUnauthorized: false }, // obrigatório para Supabase
+  ssl: isProduction
+    ? { require: true, rejectUnauthorized: false }
+    : false,
+  family: 4, // 🔥 força IPv4 (resolve erro ENETUNREACH)
 });
- console.log(process.env.DATABASE_URL)
+
+// 🔒 NÃO loga mais a URL completa (segurança)
+console.log("Tentando conectar ao banco...");
+
 pool.connect()
   .then(client => {
     console.log("✅ Conexão com Supabase OK!");
