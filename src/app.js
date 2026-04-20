@@ -53,5 +53,13 @@ app.use((err, req, res, next) => {
     message: "Erro interno no servidor"
   });
 });
+//router teste
+app.get("/health", (req, res) => {
+  res.status(200).json({
+    status: "ok",
+    uptime: process.uptime(),
+    timestamp: new Date()
+  });
+});
 
 module.exports = app;
