@@ -47,7 +47,7 @@ async function login(email, password) {
   );
 
   if (!senhaValida) {
-    throw new Error('Senha inválida');
+    throw new Error('Usuário ou senha inválidos');
   }
 
   const token = jwt.sign(
