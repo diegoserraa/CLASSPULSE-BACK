@@ -18,7 +18,7 @@ const app = express();
 app.use(
   helmet({
     contentSecurityPolicy: false,
-    frameguard: { action: "deny" }
+    frameguard: { action: "sameorigin" }
   })
 );
 
