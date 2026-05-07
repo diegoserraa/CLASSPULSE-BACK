@@ -1,0 +1,91 @@
+@baseUrl = http://localhost:3000
+
+##################################################
+### 🔐 LOGIN
+##################################################
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "diego@hotmail.com",
+  "password": "1020304050"
+}
+
+###
+
+@token = {{login.response.body.token}}
+
+##################################################
+### 📊 DASHBOARD
+##################################################
+
+### 📊 Dashboard Semanal
+GET {{baseUrl}}/dashboard?tipo=semanal
+Authorization: Bearer {{token}}
+
+###
+
+### 📊 Dashboard Mensal
+GET {{baseUrl}}/dashboard?tipo=mensal
+Authorization: Bearer {{token}}
+
+###
+
+##################################################
+### 🏆 RANKING
+##################################################
+
+### 🏆 Ranking Semanal
+GET {{baseUrl}}/ranking?tipo=semanal
+Authorization: Bearer {{token}}
+
+###
+
+### 🏆 Ranking Mensal
+GET {{baseUrl}}/ranking?tipo=mensal
+Authorization: Bearer {{token}}
+
+###
+
+##################################################
+### 📊 TABELA (GESTOR)
+##################################################
+
+### 📊 Tabela completa (mês atual automático)
+GET {{baseUrl}}/ranking/tabela
+Authorization: Bearer {{token}}
+
+###
+
+### 📊 Tabela filtrando por turma
+GET {{baseUrl}}/ranking/tabela?turmaId=4
+Authorization: Bearer {{token}}
+
+###
+
+### 📊 Tabela filtrando por período
+GET {{baseUrl}}/ranking/tabela?dataInicio=2026-04-01&dataFim=2026-04-30
+Authorization: Bearer {{token}}
+
+###
+
+##################################################
+### 🏫 TURMAS
+##################################################
+
+### 🏫 Listar turmas
+GET {{baseUrl}}/turmas
+Authorization: Bearer {{token}}
+
+###
+
+##################################################
+### ❌ DELETAR REGISTRO
+##################################################
+
+### ❌ Deletar registro por ID
+DELETE {{baseUrl}}/ranking/29
+Authorization: Bearer {{token}}
+
+###

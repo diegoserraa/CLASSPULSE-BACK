@@ -11,6 +11,7 @@ const turmaRoutes = require("./routes/turmaRoutes");
 const rankingRoutes = require("./routes/rankingRoutes");
 const authRoutes = require("./routes/authRoutes");
 const temaRoutes = require("./routes/temaRoutes");
+const dashboardRoutes = require("./routes/dashboardRoutes");
 
 const app = express();
 
@@ -44,6 +45,7 @@ app.use("/turmas", turmaRoutes);
 app.use("/ranking", rankingRoutes);
 app.use("/auth", authRoutes);
 app.use("/tema", temaRoutes);
+app.use("/dashboard", dashboardRoutes);
 
 // 🚨 Erro
 app.use((err, req, res, next) => {
