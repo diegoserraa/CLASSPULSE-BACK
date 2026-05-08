@@ -1,7 +1,9 @@
+// src/services/emailService.js
+
 const nodemailer = require('nodemailer');
-const { google } = require('googleapis');
 const validator = require('validator');
 const EmailRepository = require('../repositories/emailRepository');
+const { google } = require('googleapis');
 
 // ========================================
 // OAUTH2 GOOGLE
@@ -24,26 +26,26 @@ oauth2Client.setCredentials({
 // ========================================
 
 async function createTransporter() {
-  const accessToken = await oauth2Client.getAccessToken();
+  const accessTokenResponse =
+    await oauth2Client.getAccessToken();
+
+  const accessToken = accessTokenResponse.token;
 
   return nodemailer.createTransport({
     service: 'gmail',
 
     auth: {
       type: 'OAuth2',
-
       user: process.env.EMAIL_USER,
-
       clientId: process.env.GOOGLE_CLIENT_ID,
-
-      clientSecret:
-        process.env.GOOGLE_CLIENT_SECRET,
-
-      refreshToken:
-        process.env.GOOGLE_REFRESH_TOKEN,
-
-      accessToken: accessToken.token,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      refreshToken: process.env.GOOGLE_REFRESH_TOKEN,
+      accessToken,
     },
+
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 10000,
   });
 }
 
@@ -58,23 +60,15 @@ function traduzirErroEmail(error) {
     msg.includes('invalid login') ||
     msg.includes('auth')
   ) {
-    return 'Falha na autenticação Gmail';
+    return 'Falha autenticação Google';
   }
 
   if (
     msg.includes('timeout') ||
     msg.includes('econnrefused') ||
-    msg.includes('etimedout') ||
-    msg.includes('enetunreach')
+    msg.includes('etimedout')
   ) {
-    return 'Servidor de email indisponível';
-  }
-
-  if (
-    msg.includes('invalid recipient') ||
-    msg.includes('no recipients')
-  ) {
-    return 'Destinatário inválido';
+    return 'Servidor email indisponível';
   }
 
   return error.message || 'Erro ao enviar email';
@@ -85,15 +79,8 @@ function traduzirErroEmail(error) {
 // ========================================
 
 const EmailService = {
-  // ========================================
-  // ENVIAR EMAILS
-  // ========================================
-
   async enviarEmailsFaltosos(loteId) {
-    console.log('==============================');
     console.log('INICIANDO ENVIO');
-    console.log('LOTE:', loteId);
-    console.log('==============================');
 
     const alunos =
       await EmailRepository.getAlunosFaltososPendentes(
@@ -101,12 +88,8 @@ const EmailService = {
       );
 
     if (!alunos.length) {
-      throw new Error(
-        'Nenhum aluno pendente para envio'
-      );
+      throw new Error('Nenhum aluno pendente');
     }
-
-    console.log('TOTAL:', alunos.length);
 
     const transporter =
       await createTransporter();
@@ -115,19 +98,14 @@ const EmailService = {
 
     for (const aluno of alunos) {
       try {
-        console.log(
-          'ENVIANDO:',
-          aluno.email
-        );
+        console.log('ENVIANDO:', aluno.email);
 
-        // valida email
         if (!validator.isEmail(aluno.email)) {
           throw new Error(
             'Email com formato inválido'
           );
         }
 
-        // envia email
         await transporter.sendMail({
           from: `"Secretaria" <${process.env.EMAIL_USER}>`,
           to: aluno.email,
@@ -135,7 +113,6 @@ const EmailService = {
           text: `Olá ${aluno.nome}, você tem ${aluno.total_faltas} faltas registradas.`,
         });
 
-        // atualiza banco
         await EmailRepository.atualizarStatusEmail(
           aluno.id,
           {
@@ -144,27 +121,19 @@ const EmailService = {
           }
         );
 
-        console.log(
-          'EMAIL ENVIADO:',
-          aluno.email
-        );
-
         resultados.push({
           aluno: aluno.nome,
           email: aluno.email,
           status: 'ENVIADO',
         });
+
+        console.log('OK:', aluno.email);
       } catch (error) {
-        console.error(
-          'ERRO:',
-          aluno.email,
-          error.message
-        );
+        console.error(error);
 
         const erroAmigavel =
           traduzirErroEmail(error);
 
-        // atualiza banco
         await EmailRepository.atualizarStatusEmail(
           aluno.id,
           {
@@ -180,61 +149,31 @@ const EmailService = {
           erro: erroAmigavel,
         });
       }
-
-      // pequena pausa
-      await new Promise((resolve) =>
-        setTimeout(resolve, 100)
-      );
     }
 
-    console.log('==============================');
     console.log('FINALIZADO');
-    console.log('==============================');
 
     return resultados;
   },
 
-  // ========================================
-  // REENVIAR INDIVIDUAL
-  // ========================================
-
   async reenviarEmailIndividual(alunoId) {
     const aluno =
-      await EmailRepository.getAlunoPorId(
-        alunoId
-      );
+      await EmailRepository.getAlunoPorId(alunoId);
 
     if (!aluno) {
-      throw new Error(
-        'Aluno não encontrado'
-      );
+      throw new Error('Aluno não encontrado');
     }
 
+    const transporter =
+      await createTransporter();
+
     try {
-      const transporter =
-        await createTransporter();
-
-      if (!validator.isEmail(aluno.email)) {
-        throw new Error(
-          'Email com formato inválido'
-        );
-      }
-
       await transporter.sendMail({
         from: `"Secretaria" <${process.env.EMAIL_USER}>`,
         to: aluno.email,
-        subject:
-          'Reenvio - Aviso de faltas',
+        subject: 'Reenvio - Aviso de faltas',
         text: `Olá ${aluno.nome}, você tem ${aluno.total_faltas} faltas registradas.`,
       });
-
-      await EmailRepository.atualizarStatusEmail(
-        aluno.id,
-        {
-          email_enviado: true,
-          erro_email: null,
-        }
-      );
 
       return {
         aluno: aluno.nome,
@@ -242,22 +181,11 @@ const EmailService = {
         status: 'REENVIADO',
       };
     } catch (error) {
-      const erroAmigavel =
-        traduzirErroEmail(error);
-
-      await EmailRepository.atualizarStatusEmail(
-        aluno.id,
-        {
-          email_enviado: false,
-          erro_email: erroAmigavel,
-        }
-      );
-
       return {
         aluno: aluno.nome,
         email: aluno.email,
         status: 'FALHA',
-        erro: erroAmigavel,
+        erro: traduzirErroEmail(error),
       };
     }
   },
