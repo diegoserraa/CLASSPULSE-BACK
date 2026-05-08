@@ -1,46 +1,51 @@
-// src/services/emailService.js
-
 const nodemailer = require('nodemailer');
+const { google } = require('googleapis');
 const validator = require('validator');
 const EmailRepository = require('../repositories/emailRepository');
 
 // ========================================
-// TRANSPORTER SMTP
+// OAUTH2 GOOGLE
 // ========================================
 
-const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 465,
-  secure: true,
+const OAuth2 = google.auth.OAuth2;
 
-  // força IPv4
-  family: 4,
+const oauth2Client = new OAuth2(
+  process.env.GOOGLE_CLIENT_ID,
+  process.env.GOOGLE_CLIENT_SECRET,
+  'https://developers.google.com/oauthplayground'
+);
 
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-
-  connectionTimeout: 5000,
-  greetingTimeout: 5000,
-  socketTimeout: 5000,
-
-  tls: {
-    rejectUnauthorized: false,
-  },
+oauth2Client.setCredentials({
+  refresh_token: process.env.GOOGLE_REFRESH_TOKEN,
 });
 
 // ========================================
-// VERIFICA CONEXÃO SMTP
+// CRIAR TRANSPORTER
 // ========================================
 
-transporter.verify((error) => {
-  if (error) {
-    console.error('ERRO SMTP:', error);
-  } else {
-    console.log('SMTP GOOGLE CONECTADO');
-  }
-});
+async function createTransporter() {
+  const accessToken = await oauth2Client.getAccessToken();
+
+  return nodemailer.createTransport({
+    service: 'gmail',
+
+    auth: {
+      type: 'OAuth2',
+
+      user: process.env.EMAIL_USER,
+
+      clientId: process.env.GOOGLE_CLIENT_ID,
+
+      clientSecret:
+        process.env.GOOGLE_CLIENT_SECRET,
+
+      refreshToken:
+        process.env.GOOGLE_REFRESH_TOKEN,
+
+      accessToken: accessToken.token,
+    },
+  });
+}
 
 // ========================================
 // TRADUZIR ERROS
@@ -53,14 +58,7 @@ function traduzirErroEmail(error) {
     msg.includes('invalid login') ||
     msg.includes('auth')
   ) {
-    return 'Falha na autenticação do servidor de email';
-  }
-
-  if (
-    msg.includes('no recipients') ||
-    msg.includes('invalid recipient')
-  ) {
-    return 'Destinatário inválido ou rejeitado pelo servidor';
+    return 'Falha na autenticação Gmail';
   }
 
   if (
@@ -69,10 +67,17 @@ function traduzirErroEmail(error) {
     msg.includes('etimedout') ||
     msg.includes('enetunreach')
   ) {
-    return 'Servidor de email indisponível, tente mais tarde';
+    return 'Servidor de email indisponível';
   }
 
-  return error.message || 'Falha ao enviar email';
+  if (
+    msg.includes('invalid recipient') ||
+    msg.includes('no recipients')
+  ) {
+    return 'Destinatário inválido';
+  }
+
+  return error.message || 'Erro ao enviar email';
 }
 
 // ========================================
@@ -85,10 +90,10 @@ const EmailService = {
   // ========================================
 
   async enviarEmailsFaltosos(loteId) {
-    console.log('===================================');
+    console.log('==============================');
     console.log('INICIANDO ENVIO');
     console.log('LOTE:', loteId);
-    console.log('===================================');
+    console.log('==============================');
 
     const alunos =
       await EmailRepository.getAlunosFaltososPendentes(
@@ -103,15 +108,17 @@ const EmailService = {
 
     console.log('TOTAL:', alunos.length);
 
-    const resultados = [];
+    const transporter =
+      await createTransporter();
 
-    // ========================================
-    // ENVIO SEQUENCIAL
-    // ========================================
+    const resultados = [];
 
     for (const aluno of alunos) {
       try {
-        console.log('ENVIANDO:', aluno.email);
+        console.log(
+          'ENVIANDO:',
+          aluno.email
+        );
 
         // valida email
         if (!validator.isEmail(aluno.email)) {
@@ -137,7 +144,10 @@ const EmailService = {
           }
         );
 
-        console.log('ENVIADO:', aluno.email);
+        console.log(
+          'EMAIL ENVIADO:',
+          aluno.email
+        );
 
         resultados.push({
           aluno: aluno.nome,
@@ -152,10 +162,7 @@ const EmailService = {
         );
 
         const erroAmigavel =
-          error.message ===
-          'Email com formato inválido'
-            ? error.message
-            : traduzirErroEmail(error);
+          traduzirErroEmail(error);
 
         // atualiza banco
         await EmailRepository.atualizarStatusEmail(
@@ -176,60 +183,13 @@ const EmailService = {
 
       // pequena pausa
       await new Promise((resolve) =>
-        setTimeout(resolve, 300)
+        setTimeout(resolve, 100)
       );
     }
 
-    // ========================================
-    // RESUMO
-    // ========================================
-
-    const enviados = resultados.filter(
-      (r) => r.status === 'ENVIADO'
-    );
-
-    const falhas = resultados.filter(
-      (r) => r.status === 'FALHA'
-    );
-
-    let resumo = `Resumo envio lote ${loteId}\n\n`;
-
-    resumo += `ENVIADOS (${enviados.length})\n`;
-
-    enviados.forEach((r) => {
-      resumo += `- ${r.aluno}\n`;
-    });
-
-    resumo += `\nFALHAS (${falhas.length})\n`;
-
-    falhas.forEach((r) => {
-      resumo += `- ${r.aluno}\n`;
-      resumo += `Erro: ${r.erro}\n\n`;
-    });
-
-    // ========================================
-    // EMAIL RESUMO
-    // ========================================
-
-    try {
-      await transporter.sendMail({
-        from: `"Sistema" <${process.env.EMAIL_USER}>`,
-        to: 'diegoserra120@hotmail.com',
-        subject: `Resumo lote ${loteId}`,
-        text: resumo,
-      });
-
-      console.log('RESUMO ENVIADO');
-    } catch (error) {
-      console.error(
-        'ERRO RESUMO:',
-        error.message
-      );
-    }
-
-    console.log('===================================');
+    console.log('==============================');
     console.log('FINALIZADO');
-    console.log('===================================');
+    console.log('==============================');
 
     return resultados;
   },
@@ -240,13 +200,20 @@ const EmailService = {
 
   async reenviarEmailIndividual(alunoId) {
     const aluno =
-      await EmailRepository.getAlunoPorId(alunoId);
+      await EmailRepository.getAlunoPorId(
+        alunoId
+      );
 
     if (!aluno) {
-      throw new Error('Aluno não encontrado');
+      throw new Error(
+        'Aluno não encontrado'
+      );
     }
 
     try {
+      const transporter =
+        await createTransporter();
+
       if (!validator.isEmail(aluno.email)) {
         throw new Error(
           'Email com formato inválido'
@@ -256,7 +223,8 @@ const EmailService = {
       await transporter.sendMail({
         from: `"Secretaria" <${process.env.EMAIL_USER}>`,
         to: aluno.email,
-        subject: 'Reenvio - Aviso de faltas',
+        subject:
+          'Reenvio - Aviso de faltas',
         text: `Olá ${aluno.nome}, você tem ${aluno.total_faltas} faltas registradas.`,
       });
 
