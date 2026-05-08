@@ -4,6 +4,12 @@ const nodemailer = require('nodemailer');
 const validator = require('validator');
 const EmailRepository = require('../repositories/emailRepository');
 const { google } = require('googleapis');
+const dns = require('dns');
+
+// ========================================
+// FORÇAR IPV4 (CRÍTICO PARA RENDER)
+// ========================================
+dns.setDefaultResultOrder('ipv4first');
 
 // ========================================
 // OAUTH2 GOOGLE
@@ -22,7 +28,7 @@ oauth2Client.setCredentials({
 });
 
 // ========================================
-// CRIAR TRANSPORTER
+// CRIAR TRANSPORTER (CORRIGIDO)
 // ========================================
 
 async function createTransporter() {
@@ -32,7 +38,9 @@ async function createTransporter() {
   const accessToken = accessTokenResponse.token;
 
   return nodemailer.createTransport({
-    service: 'gmail',
+    host: 'smtp.gmail.com',
+    port: 587,
+    secure: false,
 
     auth: {
       type: 'OAuth2',
@@ -43,9 +51,9 @@ async function createTransporter() {
       accessToken,
     },
 
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 10000,
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 15000,
   });
 }
 
@@ -71,6 +79,10 @@ function traduzirErroEmail(error) {
     return 'Servidor email indisponível';
   }
 
+  if (msg.includes('enetreach') || msg.includes('enetunreach')) {
+    return 'Falha de conexão de rede (Render/Gmail)';
+  }
+
   return error.message || 'Erro ao enviar email';
 }
 
@@ -83,16 +95,13 @@ const EmailService = {
     console.log('INICIANDO ENVIO');
 
     const alunos =
-      await EmailRepository.getAlunosFaltososPendentes(
-        loteId
-      );
+      await EmailRepository.getAlunosFaltososPendentes(loteId);
 
     if (!alunos.length) {
       throw new Error('Nenhum aluno pendente');
     }
 
-    const transporter =
-      await createTransporter();
+    const transporter = await createTransporter();
 
     const resultados = [];
 
@@ -101,9 +110,7 @@ const EmailService = {
         console.log('ENVIANDO:', aluno.email);
 
         if (!validator.isEmail(aluno.email)) {
-          throw new Error(
-            'Email com formato inválido'
-          );
+          throw new Error('Email com formato inválido');
         }
 
         await transporter.sendMail({
@@ -113,13 +120,10 @@ const EmailService = {
           text: `Olá ${aluno.nome}, você tem ${aluno.total_faltas} faltas registradas.`,
         });
 
-        await EmailRepository.atualizarStatusEmail(
-          aluno.id,
-          {
-            email_enviado: true,
-            erro_email: null,
-          }
-        );
+        await EmailRepository.atualizarStatusEmail(aluno.id, {
+          email_enviado: true,
+          erro_email: null,
+        });
 
         resultados.push({
           aluno: aluno.nome,
@@ -128,19 +132,16 @@ const EmailService = {
         });
 
         console.log('OK:', aluno.email);
+
       } catch (error) {
-        console.error(error);
+        console.error('ERRO ENVIO:', error);
 
-        const erroAmigavel =
-          traduzirErroEmail(error);
+        const erroAmigavel = traduzirErroEmail(error);
 
-        await EmailRepository.atualizarStatusEmail(
-          aluno.id,
-          {
-            email_enviado: false,
-            erro_email: erroAmigavel,
-          }
-        );
+        await EmailRepository.atualizarStatusEmail(aluno.id, {
+          email_enviado: false,
+          erro_email: erroAmigavel,
+        });
 
         resultados.push({
           aluno: aluno.nome,
@@ -157,15 +158,13 @@ const EmailService = {
   },
 
   async reenviarEmailIndividual(alunoId) {
-    const aluno =
-      await EmailRepository.getAlunoPorId(alunoId);
+    const aluno = await EmailRepository.getAlunoPorId(alunoId);
 
     if (!aluno) {
       throw new Error('Aluno não encontrado');
     }
 
-    const transporter =
-      await createTransporter();
+    const transporter = await createTransporter();
 
     try {
       await transporter.sendMail({
@@ -180,6 +179,7 @@ const EmailService = {
         email: aluno.email,
         status: 'REENVIADO',
       };
+
     } catch (error) {
       return {
         aluno: aluno.nome,
