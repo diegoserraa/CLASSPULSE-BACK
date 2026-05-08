@@ -1,101 +1,228 @@
 // src/services/emailService.js
+
 const nodemailer = require('nodemailer');
 const validator = require('validator');
 const EmailRepository = require('../repositories/emailRepository');
+
 require('dotenv').config();
 
-// Criar transporter uma única vez (reutiliza conexão SMTP)
+// ========================================
+// TRANSPORTER SMTP
+// ========================================
+
 const transporter = nodemailer.createTransport({
   service: 'gmail',
+
   pool: true,
-  maxConnections: 5,
-  maxMessages: 100,
+  maxConnections: 3,
+  maxMessages: 50,
+
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
+
+  connectionTimeout: 10000,
+  greetingTimeout: 10000,
+  socketTimeout: 15000,
+
+  tls: {
+    rejectUnauthorized: false,
+  },
 });
 
-// Função para traduzir erros técnicos em mensagens amigáveis
+// ========================================
+// TRADUZIR ERROS
+// ========================================
+
 function traduzirErroEmail(error) {
   const msg = (error.message || '').toLowerCase();
-  if (msg.includes('invalid login') || msg.includes('auth')) return 'Falha na autenticação do servidor de email';
-  if (msg.includes('no recipients') || msg.includes('invalid recipient')) return 'Destinatário inválido ou rejeitado pelo servidor';
-  if (msg.includes('getaddrinfo') || msg.includes('domain')) return 'Domínio do email não encontrado';
-  if (msg.includes('timeout') || msg.includes('econnrefused')) return 'Servidor de email indisponível, tente mais tarde';
+
+  if (msg.includes('invalid login') || msg.includes('auth')) {
+    return 'Falha na autenticação do servidor de email';
+  }
+
+  if (msg.includes('no recipients') || msg.includes('invalid recipient')) {
+    return 'Destinatário inválido ou rejeitado pelo servidor';
+  }
+
+  if (msg.includes('getaddrinfo') || msg.includes('domain')) {
+    return 'Domínio do email não encontrado';
+  }
+
+  if (
+    msg.includes('timeout') ||
+    msg.includes('econnrefused') ||
+    msg.includes('etimedout')
+  ) {
+    return 'Servidor de email indisponível, tente mais tarde';
+  }
+
   return error.message || 'Falha ao enviar email';
 }
 
+// ========================================
+// DIVIDIR ARRAY EM LOTES
+// ========================================
+
+function chunkArray(array, size) {
+  const result = [];
+
+  for (let i = 0; i < array.length; i += size) {
+    result.push(array.slice(i, i + size));
+  }
+
+  return result;
+}
+
+// ========================================
+// SERVICE
+// ========================================
+
 const EmailService = {
+  // ========================================
+  // ENVIAR EMAILS LOTE
+  // ========================================
+
   async enviarEmailsFaltosos(loteId) {
-    const alunos = await EmailRepository.getAlunosFaltososPendentes(loteId);
+    console.log('===================================');
+    console.log('INICIANDO ENVIO DE EMAILS');
+    console.log('LOTE:', loteId);
+    console.log('===================================');
+
+    const alunos =
+      await EmailRepository.getAlunosFaltososPendentes(loteId);
 
     if (!alunos.length) {
-      throw new Error('Nenhum aluno pendente para envio de email neste lote');
+      throw new Error(
+        'Nenhum aluno pendente para envio de email neste lote'
+      );
     }
 
-    // Envio paralelo de emails
-    const promises = alunos.map(async (aluno) => {
-      try {
-        // ✅ Validação de email antes de enviar
-        if (!validator.isEmail(aluno.email)) {
-          throw new Error('Email com formato inválido');
+    console.log(`TOTAL DE ALUNOS: ${alunos.length}`);
+
+    const resultados = [];
+
+    // envia em grupos de 3
+    const grupos = chunkArray(alunos, 3);
+
+    for (const grupo of grupos) {
+      console.log('---------------------------');
+      console.log(`ENVIANDO GRUPO (${grupo.length})`);
+      console.log('---------------------------');
+
+      const promises = grupo.map(async (aluno) => {
+        try {
+          console.log(`Enviando email para: ${aluno.email}`);
+
+          // valida email
+          if (!validator.isEmail(aluno.email)) {
+            throw new Error('Email com formato inválido');
+          }
+
+          // envia email
+          await transporter.sendMail({
+            from: `"Secretaria" <${process.env.EMAIL_USER}>`,
+            to: aluno.email,
+            subject: 'Aviso de faltas',
+            text: `Olá ${aluno.nome}, você tem ${aluno.total_faltas} faltas registradas.`,
+          });
+
+          // atualiza banco
+          await EmailRepository.atualizarStatusEmail(aluno.id, {
+            email_enviado: true,
+            erro_email: null,
+          });
+
+          console.log(`EMAIL ENVIADO: ${aluno.email}`);
+
+          return {
+            aluno: aluno.nome,
+            email: aluno.email,
+            status: 'ENVIADO',
+          };
+        } catch (error) {
+          console.error(
+            `ERRO AO ENVIAR PARA ${aluno.email}:`,
+            error.message
+          );
+
+          const erroAmigavel =
+            error.message === 'Email com formato inválido'
+              ? error.message
+              : traduzirErroEmail(error);
+
+          // atualiza banco
+          await EmailRepository.atualizarStatusEmail(aluno.id, {
+            email_enviado: false,
+            erro_email: erroAmigavel,
+          });
+
+          return {
+            aluno: aluno.nome,
+            email: aluno.email,
+            status: 'FALHA',
+            erro: erroAmigavel,
+          };
         }
+      });
 
-        // Envia email
-        await transporter.sendMail({
-          from: `"Secretaria" <${process.env.EMAIL_USER}>`,
-          to: aluno.email,
-          subject: 'Aviso de faltas',
-          text: `Olá ${aluno.nome}, você tem ${aluno.total_faltas} faltas registradas.`,
-        });
+      const resultadoGrupo = await Promise.all(promises);
 
-        // Atualiza sucesso no banco
-        await EmailRepository.atualizarStatusEmail(aluno.id, {
-          email_enviado: true,
-          erro_email: null,
-        });
+      resultados.push(...resultadoGrupo);
+    }
 
-        return { aluno: aluno.nome, email: aluno.email, status: 'ENVIADO' };
+    // ========================================
+    // DETECTA FALHA CRÍTICA
+    // ========================================
 
-      } catch (error) {
-        const erroAmigavel = error.message === 'Email com formato inválido'
-          ? error.message
-          : traduzirErroEmail(error);
-
-        // Atualiza falha no banco
-        await EmailRepository.atualizarStatusEmail(aluno.id, {
-          email_enviado: false,
-          erro_email: erroAmigavel,
-        });
-
-        return { aluno: aluno.nome, email: aluno.email, status: 'FALHA', erro: erroAmigavel };
-      }
-    });
-
-    const resultados = await Promise.all(promises);
-
-    // 🔹 Detecta falha crítica global (ex.: credenciais erradas)
-    const falhaCritica = resultados.every(r => r.status === 'FALHA') &&
-                          resultados.some(r => r.erro.includes('Falha na autenticação do servidor de email'));
+    const falhaCritica =
+      resultados.every((r) => r.status === 'FALHA') &&
+      resultados.some(
+        (r) =>
+          r.erro &&
+          r.erro.includes(
+            'Falha na autenticação do servidor de email'
+          )
+      );
 
     if (falhaCritica) {
-      throw new Error('Falha crítica no servidor de email: verifique usuário e senha');
+      throw new Error(
+        'Falha crítica no servidor de email: verifique usuário e senha'
+      );
     }
 
-    // 🔹 Monta resumo para a secretaria
-    const enviados = resultados.filter(r => r.status === 'ENVIADO');
-    const falhas = resultados.filter(r => r.status === 'FALHA');
+    // ========================================
+    // RESUMO
+    // ========================================
+
+    const enviados = resultados.filter(
+      (r) => r.status === 'ENVIADO'
+    );
+
+    const falhas = resultados.filter(
+      (r) => r.status === 'FALHA'
+    );
 
     let resumo = `Resumo do envio de emails (Lote ${loteId})\n\n`;
 
     resumo += `✅ ENVIADOS (${enviados.length}):\n`;
-    enviados.forEach(r => { resumo += `- ${r.aluno} (${r.email})\n`; });
+
+    enviados.forEach((r) => {
+      resumo += `- ${r.aluno} (${r.email})\n`;
+    });
 
     resumo += `\n❌ FALHAS (${falhas.length}):\n`;
-    falhas.forEach(r => { resumo += `- ${r.aluno} (${r.email})\n  Erro: ${r.erro}\n`; });
 
-    // Envia resumo para a secretaria
+    falhas.forEach((r) => {
+      resumo += `- ${r.aluno} (${r.email})\n`;
+      resumo += `  Erro: ${r.erro}\n`;
+    });
+
+    // ========================================
+    // EMAIL RESUMO
+    // ========================================
+
     try {
       await transporter.sendMail({
         from: `"Sistema de Notificação" <${process.env.EMAIL_USER}>`,
@@ -103,62 +230,83 @@ const EmailService = {
         subject: `Resumo envio de emails - Lote ${loteId}`,
         text: resumo,
       });
+
+      console.log('EMAIL DE RESUMO ENVIADO');
     } catch (error) {
-      console.error('Erro ao enviar email de resumo:', error.message);
+      console.error(
+        'Erro ao enviar email de resumo:',
+        error.message
+      );
     }
+
+    console.log('===================================');
+    console.log('FINALIZADO ENVIO');
+    console.log('===================================');
 
     return resultados;
   },
-async reenviarEmailIndividual(alunoId) {
-  const aluno = await EmailRepository.getAlunoPorId(alunoId);
 
-  if (!aluno) {
-    throw new Error('Aluno não encontrado');
-  }
+  // ========================================
+  // REENVIAR EMAIL INDIVIDUAL
+  // ========================================
 
-  try {
-    // valida email
-    if (!validator.isEmail(aluno.email)) {
-      throw new Error('Email com formato inválido');
+  async reenviarEmailIndividual(alunoId) {
+    const aluno = await EmailRepository.getAlunoPorId(alunoId);
+
+    if (!aluno) {
+      throw new Error('Aluno não encontrado');
     }
 
-    // envia email
-    await transporter.sendMail({
-      from: `"Secretaria" <${process.env.EMAIL_USER}>`,
-      to: aluno.email,
-      subject: 'Reenvio - Aviso de faltas',
-      text: `Olá ${aluno.nome}, você tem ${aluno.total_faltas} faltas registradas.`,
-    });
+    try {
+      console.log(`REENVIANDO EMAIL: ${aluno.email}`);
 
-    // atualiza sucesso
-    await EmailRepository.atualizarStatusEmail(aluno.id, {
-      email_enviado: true,
-      erro_email: null,
-    });
+      // valida email
+      if (!validator.isEmail(aluno.email)) {
+        throw new Error('Email com formato inválido');
+      }
 
-    return {
-      aluno: aluno.nome,
-      email: aluno.email,
-      status: 'REENVIADO'
-    };
+      // envia email
+      await transporter.sendMail({
+        from: `"Secretaria" <${process.env.EMAIL_USER}>`,
+        to: aluno.email,
+        subject: 'Reenvio - Aviso de faltas',
+        text: `Olá ${aluno.nome}, você tem ${aluno.total_faltas} faltas registradas.`,
+      });
 
-  } catch (error) {
-    const erroAmigavel = traduzirErroEmail(error);
+      // atualiza banco
+      await EmailRepository.atualizarStatusEmail(aluno.id, {
+        email_enviado: true,
+        erro_email: null,
+      });
 
-    await EmailRepository.atualizarStatusEmail(aluno.id, {
-      email_enviado: false,
-      erro_email: erroAmigavel,
-    });
+      console.log(`REENVIO OK: ${aluno.email}`);
 
-    return {
-      aluno: aluno.nome,
-      email: aluno.email,
-      status: 'FALHA',
-      erro: erroAmigavel
-    };
-  }
-}
+      return {
+        aluno: aluno.nome,
+        email: aluno.email,
+        status: 'REENVIADO',
+      };
+    } catch (error) {
+      console.error(
+        `ERRO REENVIO ${aluno.email}:`,
+        error.message
+      );
+
+      const erroAmigavel = traduzirErroEmail(error);
+
+      await EmailRepository.atualizarStatusEmail(aluno.id, {
+        email_enviado: false,
+        erro_email: erroAmigavel,
+      });
+
+      return {
+        aluno: aluno.nome,
+        email: aluno.email,
+        status: 'FALHA',
+        erro: erroAmigavel,
+      };
+    }
+  },
 };
-
 
 module.exports = EmailService;

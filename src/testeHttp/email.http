@@ -1,7 +1,8 @@
 ### 🔐 Buscar tema ativo
 GET http://localhost:3000/tema/tema-ativo
 Authorization: Bearer SEU_TOKEN_AQUI
-
-
-
+###
+POST http://localhost:3000/emails/lote/04ba40a4-62b6-437e-96e6-0bf829bb84c0
+Content-Type: application/json
+Authorization: Bearer SEU_TOKEN_AQUI
 ### 🔐 Atualizar tema ativo

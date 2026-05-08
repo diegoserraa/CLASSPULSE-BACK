@@ -33,7 +33,10 @@ Content-Type: application/json
   "email": "diego@hotmail.com",
   "password": "1020304050"
 }
-
+####
+POST http://localhost:3000/emails/lote/04ba40a4-62b6-437e-96e6-0bf829bb84c0
+Content-Type: application/json
+Authorization: Bearer {{token}}
 ###
 
 ### ===============================
