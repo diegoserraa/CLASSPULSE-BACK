@@ -9,16 +9,37 @@ const EmailRepository = require('../repositories/emailRepository');
 // ========================================
 
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: 'smtp.gmail.com',
+  port: 465,
+  secure: true,
+
+  // força IPv4
+  family: 4,
 
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
 
+  connectionTimeout: 5000,
+  greetingTimeout: 5000,
+  socketTimeout: 5000,
+
   tls: {
     rejectUnauthorized: false,
   },
+});
+
+// ========================================
+// VERIFICA CONEXÃO SMTP
+// ========================================
+
+transporter.verify((error) => {
+  if (error) {
+    console.error('ERRO SMTP:', error);
+  } else {
+    console.log('SMTP GOOGLE CONECTADO');
+  }
 });
 
 // ========================================
@@ -153,12 +174,9 @@ const EmailService = {
         });
       }
 
-      // ========================================
-      // PAUSA ENTRE EMAILS
-      // ========================================
-
+      // pequena pausa
       await new Promise((resolve) =>
-        setTimeout(resolve, 100)
+        setTimeout(resolve, 300)
       );
     }
 
