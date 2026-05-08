@@ -77,12 +77,12 @@ const EmailService = {
         }
 
         // ========================================
-        // 📩 TEMPLATE SENAI (AJUSTADO)
+        // 📩 TEMPLATE SENAI (COM NOME DO ALUNO)
         // ========================================
         const emailTexto = `
-Prezado(a) aluno(a),
+Prezado(a) ${aluno.nome},
 
-Na semana de apuração de frequência, foram registradas ${aluno.total_faltas} faltas em sua frequência.
+Nos últimos registros de frequência, foram identificadas ${aluno.total_faltas} faltas em sua situação acadêmica.
 
 Atenção: o(a) aluno(a) que atingir 10 (dez) dias consecutivos de faltas, sem justificativa, terá sua situação analisada pela equipe Técnico-Pedagógica, podendo resultar em cancelamento de matrícula, conforme Manual do Trilhas de Futuro.
 
@@ -170,9 +170,9 @@ ${falhas.length ? falhas.map(f => `- ${f.aluno} (${f.erro})`).join('\n') : '-'}
     }
 
     const emailTexto = `
-Prezado(a) aluno(a),
+Prezado(a) ${aluno.nome},
 
-Na semana de apuração de frequência, foram registradas ${aluno.total_faltas} faltas em sua frequência.
+Nos últimos registros de frequência, foram identificadas ${aluno.total_faltas} faltas em sua situação acadêmica.
 
 Atenção: o(a) aluno(a) que atingir 10 (dez) dias consecutivos de faltas, sem justificativa, terá sua situação analisada pela equipe Técnico-Pedagógica, podendo resultar em cancelamento de matrícula, conforme Manual do Trilhas de Futuro.
 
