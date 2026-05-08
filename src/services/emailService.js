@@ -76,10 +76,26 @@ const EmailService = {
           throw new Error('Email com formato inválido');
         }
 
+        // ========================================
+        // 📩 TEMPLATE SENAI (AJUSTADO)
+        // ========================================
+        const emailTexto = `
+Prezado(a) aluno(a),
+
+Na semana de apuração de frequência, foram registradas ${aluno.total_faltas} faltas em sua frequência.
+
+Atenção: o(a) aluno(a) que atingir 10 (dez) dias consecutivos de faltas, sem justificativa, terá sua situação analisada pela equipe Técnico-Pedagógica, podendo resultar em cancelamento de matrícula, conforme Manual do Trilhas de Futuro.
+
+Entre em contato com a equipe pedagógica e encaminhe a justificativa legal, quando houver.
+
+Equipe Técnico-Pedagógica  
+SENAI – Trilhas de Futuro
+`;
+
         await enviarEmailGmailAPI(
           aluno.email,
-          'Aviso de faltas',
-          `Olá ${aluno.nome}, você tem ${aluno.total_faltas} faltas registradas.`
+          'Aviso de frequência – Trilhas de Futuro',
+          emailTexto
         );
 
         await EmailRepository.atualizarStatusEmail(aluno.id, {
@@ -113,7 +129,7 @@ const EmailService = {
     }
 
     // ========================================
-    // 📊 RESUMO PARA SECRETARIA (NOVO)
+    // 📊 RESUMO PARA SECRETARIA
     // ========================================
 
     const enviados = resultados.filter(r => r.status === 'ENVIADO');
@@ -131,7 +147,7 @@ ${falhas.length ? falhas.map(f => `- ${f.aluno} (${f.erro})`).join('\n') : '-'}
 
     try {
       await enviarEmailGmailAPI(
-        process.env.EMAIL_USER,
+        'diegoserra120@hotmail.com',
         `Resumo envio lote ${loteId}`,
         resumo
       );
@@ -153,11 +169,22 @@ ${falhas.length ? falhas.map(f => `- ${f.aluno} (${f.erro})`).join('\n') : '-'}
       throw new Error('Aluno não encontrado');
     }
 
+    const emailTexto = `
+Prezado(a) aluno(a),
+
+Na semana de apuração de frequência, foram registradas ${aluno.total_faltas} faltas em sua frequência.
+
+Atenção: o(a) aluno(a) que atingir 10 (dez) dias consecutivos de faltas, sem justificativa, terá sua situação analisada pela equipe Técnico-Pedagógica, podendo resultar em cancelamento de matrícula, conforme Manual do Trilhas de Futuro.
+
+Equipe Técnico-Pedagógica  
+SENAI – Trilhas de Futuro
+`;
+
     try {
       await enviarEmailGmailAPI(
         aluno.email,
-        'Reenvio - Aviso de faltas',
-        `Olá ${aluno.nome}, você tem ${aluno.total_faltas} faltas registradas.`
+        'Reenvio - Aviso de frequência – Trilhas de Futuro',
+        emailTexto
       );
 
       return {
