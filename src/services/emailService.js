@@ -4,18 +4,21 @@ const nodemailer = require('nodemailer');
 const validator = require('validator');
 const EmailRepository = require('../repositories/emailRepository');
 
-require('dotenv').config();
-
 // ========================================
 // TRANSPORTER SMTP
 // ========================================
 
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: 'smtp.gmail.com',
+  port: 587,
+  secure: false,
+
+  // força IPv4
+  family: 4,
 
   pool: true,
-  maxConnections: 3,
-  maxMessages: 50,
+  maxConnections: 2,
+  maxMessages: 20,
 
   auth: {
     user: process.env.EMAIL_USER,
@@ -42,18 +45,25 @@ function traduzirErroEmail(error) {
     return 'Falha na autenticação do servidor de email';
   }
 
-  if (msg.includes('no recipients') || msg.includes('invalid recipient')) {
+  if (
+    msg.includes('no recipients') ||
+    msg.includes('invalid recipient')
+  ) {
     return 'Destinatário inválido ou rejeitado pelo servidor';
   }
 
-  if (msg.includes('getaddrinfo') || msg.includes('domain')) {
+  if (
+    msg.includes('getaddrinfo') ||
+    msg.includes('domain')
+  ) {
     return 'Domínio do email não encontrado';
   }
 
   if (
     msg.includes('timeout') ||
     msg.includes('econnrefused') ||
-    msg.includes('etimedout')
+    msg.includes('etimedout') ||
+    msg.includes('enetunreach')
   ) {
     return 'Servidor de email indisponível, tente mais tarde';
   }
@@ -81,7 +91,7 @@ function chunkArray(array, size) {
 
 const EmailService = {
   // ========================================
-  // ENVIAR EMAILS LOTE
+  // ENVIAR EMAILS EM LOTE
   // ========================================
 
   async enviarEmailsFaltosos(loteId) {
@@ -103,8 +113,8 @@ const EmailService = {
 
     const resultados = [];
 
-    // envia em grupos de 3
-    const grupos = chunkArray(alunos, 3);
+    // envia em grupos pequenos
+    const grupos = chunkArray(alunos, 2);
 
     for (const grupo of grupos) {
       console.log('---------------------------');
@@ -170,6 +180,11 @@ const EmailService = {
       const resultadoGrupo = await Promise.all(promises);
 
       resultados.push(...resultadoGrupo);
+
+      // pequena pausa entre grupos
+      await new Promise((resolve) =>
+        setTimeout(resolve, 1000)
+      );
     }
 
     // ========================================
@@ -231,7 +246,7 @@ const EmailService = {
         text: resumo,
       });
 
-      console.log('EMAIL DE RESUMO ENVIADO');
+      console.log('EMAIL RESUMO ENVIADO');
     } catch (error) {
       console.error(
         'Erro ao enviar email de resumo:',
@@ -260,12 +275,10 @@ const EmailService = {
     try {
       console.log(`REENVIANDO EMAIL: ${aluno.email}`);
 
-      // valida email
       if (!validator.isEmail(aluno.email)) {
         throw new Error('Email com formato inválido');
       }
 
-      // envia email
       await transporter.sendMail({
         from: `"Secretaria" <${process.env.EMAIL_USER}>`,
         to: aluno.email,
@@ -273,7 +286,6 @@ const EmailService = {
         text: `Olá ${aluno.nome}, você tem ${aluno.total_faltas} faltas registradas.`,
       });
 
-      // atualiza banco
       await EmailRepository.atualizarStatusEmail(aluno.id, {
         email_enviado: true,
         erro_email: null,
