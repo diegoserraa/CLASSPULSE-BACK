@@ -19,7 +19,7 @@ oauth2Client.setCredentials({
 });
 
 // ========================================
-// FUNÇÃO GMAIL API (ENVIO REAL)
+// GMAIL API - ENVIO
 // ========================================
 
 async function enviarEmailGmailAPI(to, subject, text) {
@@ -110,6 +110,35 @@ const EmailService = {
           erro: error.message || 'Erro ao enviar email',
         });
       }
+    }
+
+    // ========================================
+    // 📊 RESUMO PARA SECRETARIA (NOVO)
+    // ========================================
+
+    const enviados = resultados.filter(r => r.status === 'ENVIADO');
+    const falhas = resultados.filter(r => r.status === 'FALHA');
+
+    const resumo = `
+Resumo envio lote ${loteId}
+
+ENVIADOS (${enviados.length})
+${enviados.length ? enviados.map(e => `- ${e.aluno}`).join('\n') : '-'}
+
+FALHAS (${falhas.length})
+${falhas.length ? falhas.map(f => `- ${f.aluno} (${f.erro})`).join('\n') : '-'}
+`;
+
+    try {
+      await enviarEmailGmailAPI(
+        process.env.EMAIL_USER,
+        `Resumo envio lote ${loteId}`,
+        resumo
+      );
+
+      console.log('RESUMO ENVIADO PARA SECRETARIA');
+    } catch (err) {
+      console.error('ERRO AO ENVIAR RESUMO:', err.message);
     }
 
     console.log('FINALIZADO');
