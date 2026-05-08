@@ -1,23 +1,14 @@
 // src/services/emailService.js
 
-const nodemailer = require('nodemailer');
 const validator = require('validator');
 const EmailRepository = require('../repositories/emailRepository');
 const { google } = require('googleapis');
-const dns = require('dns');
-
-// ========================================
-// FORÇAR IPV4 (CRÍTICO PARA RENDER)
-// ========================================
-dns.setDefaultResultOrder('ipv4first');
 
 // ========================================
 // OAUTH2 GOOGLE
 // ========================================
 
-const OAuth2 = google.auth.OAuth2;
-
-const oauth2Client = new OAuth2(
+const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
   process.env.GOOGLE_CLIENT_SECRET,
   'https://developers.google.com/oauthplayground'
@@ -28,62 +19,36 @@ oauth2Client.setCredentials({
 });
 
 // ========================================
-// CRIAR TRANSPORTER (CORRIGIDO)
+// FUNÇÃO GMAIL API (ENVIO REAL)
 // ========================================
 
-async function createTransporter() {
-  const accessTokenResponse =
-    await oauth2Client.getAccessToken();
+async function enviarEmailGmailAPI(to, subject, text) {
+  const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-  const accessToken = accessTokenResponse.token;
+  const messageParts = [
+    `To: ${to}`,
+    `From: ${process.env.EMAIL_USER}`,
+    'Content-Type: text/plain; charset="UTF-8"',
+    'MIME-Version: 1.0',
+    `Subject: ${subject}`,
+    '',
+    text,
+  ];
 
-  return nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 587,
-    secure: false,
+  const message = messageParts.join('\n');
 
-    auth: {
-      type: 'OAuth2',
-      user: process.env.EMAIL_USER,
-      clientId: process.env.GOOGLE_CLIENT_ID,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      refreshToken: process.env.GOOGLE_REFRESH_TOKEN,
-      accessToken,
+  const encodedMessage = Buffer.from(message)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+
+  await gmail.users.messages.send({
+    userId: 'me',
+    requestBody: {
+      raw: encodedMessage,
     },
-
-    connectionTimeout: 15000,
-    greetingTimeout: 15000,
-    socketTimeout: 15000,
   });
-}
-
-// ========================================
-// TRADUZIR ERROS
-// ========================================
-
-function traduzirErroEmail(error) {
-  const msg = (error.message || '').toLowerCase();
-
-  if (
-    msg.includes('invalid login') ||
-    msg.includes('auth')
-  ) {
-    return 'Falha autenticação Google';
-  }
-
-  if (
-    msg.includes('timeout') ||
-    msg.includes('econnrefused') ||
-    msg.includes('etimedout')
-  ) {
-    return 'Servidor email indisponível';
-  }
-
-  if (msg.includes('enetreach') || msg.includes('enetunreach')) {
-    return 'Falha de conexão de rede (Render/Gmail)';
-  }
-
-  return error.message || 'Erro ao enviar email';
 }
 
 // ========================================
@@ -92,7 +57,7 @@ function traduzirErroEmail(error) {
 
 const EmailService = {
   async enviarEmailsFaltosos(loteId) {
-    console.log('INICIANDO ENVIO');
+    console.log('INICIANDO ENVIO (GMAIL API)');
 
     const alunos =
       await EmailRepository.getAlunosFaltososPendentes(loteId);
@@ -100,8 +65,6 @@ const EmailService = {
     if (!alunos.length) {
       throw new Error('Nenhum aluno pendente');
     }
-
-    const transporter = await createTransporter();
 
     const resultados = [];
 
@@ -113,12 +76,11 @@ const EmailService = {
           throw new Error('Email com formato inválido');
         }
 
-        await transporter.sendMail({
-          from: `"Secretaria" <${process.env.EMAIL_USER}>`,
-          to: aluno.email,
-          subject: 'Aviso de faltas',
-          text: `Olá ${aluno.nome}, você tem ${aluno.total_faltas} faltas registradas.`,
-        });
+        await enviarEmailGmailAPI(
+          aluno.email,
+          'Aviso de faltas',
+          `Olá ${aluno.nome}, você tem ${aluno.total_faltas} faltas registradas.`
+        );
 
         await EmailRepository.atualizarStatusEmail(aluno.id, {
           email_enviado: true,
@@ -136,18 +98,16 @@ const EmailService = {
       } catch (error) {
         console.error('ERRO ENVIO:', error);
 
-        const erroAmigavel = traduzirErroEmail(error);
-
         await EmailRepository.atualizarStatusEmail(aluno.id, {
           email_enviado: false,
-          erro_email: erroAmigavel,
+          erro_email: error.message || 'Erro ao enviar email',
         });
 
         resultados.push({
           aluno: aluno.nome,
           email: aluno.email,
           status: 'FALHA',
-          erro: erroAmigavel,
+          erro: error.message || 'Erro ao enviar email',
         });
       }
     }
@@ -164,15 +124,12 @@ const EmailService = {
       throw new Error('Aluno não encontrado');
     }
 
-    const transporter = await createTransporter();
-
     try {
-      await transporter.sendMail({
-        from: `"Secretaria" <${process.env.EMAIL_USER}>`,
-        to: aluno.email,
-        subject: 'Reenvio - Aviso de faltas',
-        text: `Olá ${aluno.nome}, você tem ${aluno.total_faltas} faltas registradas.`,
-      });
+      await enviarEmailGmailAPI(
+        aluno.email,
+        'Reenvio - Aviso de faltas',
+        `Olá ${aluno.nome}, você tem ${aluno.total_faltas} faltas registradas.`
+      );
 
       return {
         aluno: aluno.nome,
@@ -185,7 +142,7 @@ const EmailService = {
         aluno: aluno.nome,
         email: aluno.email,
         status: 'FALHA',
-        erro: traduzirErroEmail(error),
+        erro: error.message,
       };
     }
   },
