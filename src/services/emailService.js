@@ -19,6 +19,14 @@ oauth2Client.setCredentials({
 });
 
 // ========================================
+// 🔥 ENCODE SUBJECT (CORREÇÃO UTF-8)
+// ========================================
+
+function encodeSubject(subject) {
+  return `=?UTF-8?B?${Buffer.from(subject, 'utf8').toString('base64')}?=`;
+}
+
+// ========================================
 // GMAIL API - ENVIO
 // ========================================
 
@@ -30,7 +38,7 @@ async function enviarEmailGmailAPI(to, subject, text) {
     `From: ${process.env.EMAIL_USER}`,
     'Content-Type: text/plain; charset="UTF-8"',
     'MIME-Version: 1.0',
-    `Subject: ${subject}`,
+    `Subject: ${encodeSubject(subject)}`,
     '',
     text,
   ];
@@ -76,9 +84,6 @@ const EmailService = {
           throw new Error('Email com formato inválido');
         }
 
-        // ========================================
-        // 📩 TEMPLATE SENAI (COM NOME DO ALUNO)
-        // ========================================
         const emailTexto = `
 Prezado(a) ${aluno.nome},
 
