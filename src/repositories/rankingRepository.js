@@ -1,10 +1,49 @@
 // src/repositories/rankingRepository.js
+
 const pool = require("../database/connection");
 
 // =========================
-// Salvar ranking semanal
+// 📅 FORMATAR DATA
+// =========================
+function formatarData(date) {
+  const ano = date.getFullYear();
+  const mes = String(date.getMonth() + 1).padStart(2, "0");
+  const dia = String(date.getDate()).padStart(2, "0");
+
+  return `${ano}-${mes}-${dia}`;
+}
+
+// =========================
+// 📅 PEGAR MÊS ATUAL
+// =========================
+function obterMesAtual() {
+
+  const hoje = new Date();
+
+  return {
+    inicio: formatarData(
+      new Date(
+        hoje.getFullYear(),
+        hoje.getMonth(),
+        1
+      )
+    ),
+
+    fim: formatarData(
+      new Date(
+        hoje.getFullYear(),
+        hoje.getMonth() + 1,
+        0
+      )
+    )
+  };
+}
+
+// =========================
+// 💾 SALVAR RANKING SEMANAL
 // =========================
 async function salvarSemana(registro) {
+
   const {
     turma_id,
     data_inicio,
@@ -16,16 +55,34 @@ async function salvarSemana(registro) {
   } = registro;
 
   const query = `
-    INSERT INTO ranking_semanal
-      (turma_id, data_inicio, data_fim, total_alunos, total_faltas, dias_aula, porcentagem_presenca)
-    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    INSERT INTO ranking_semanal (
+      turma_id,
+      data_inicio,
+      data_fim,
+      total_alunos,
+      total_faltas,
+      dias_aula,
+      porcentagem_presenca
+    )
+
+    VALUES (
+      $1,
+      $2::date,
+      $3::date,
+      $4,
+      $5,
+      $6,
+      $7
+    )
+
     ON CONFLICT (turma_id, data_inicio)
+
     DO UPDATE SET
-      data_fim = $3,
-      total_alunos = $4,
-      total_faltas = $5,
-      dias_aula = $6,
-      porcentagem_presenca = $7
+      data_fim = EXCLUDED.data_fim,
+      total_alunos = EXCLUDED.total_alunos,
+      total_faltas = EXCLUDED.total_faltas,
+      dias_aula = EXCLUDED.dias_aula,
+      porcentagem_presenca = EXCLUDED.porcentagem_presenca
   `;
 
   await pool.query(query, [
@@ -42,13 +99,48 @@ async function salvarSemana(registro) {
 // =========================
 // 📊 TABELA (PAINEL GESTOR)
 // =========================
-async function listarTabela({ turmaId, dataInicio, dataFim }) {
+async function listarTabela({
+  turmaId,
+  dataInicio,
+  dataFim
+}) {
+
   const query = `
-    SELECT *
+    SELECT
+      id,
+      turma_id,
+
+      TO_CHAR(
+        data_inicio,
+        'YYYY-MM-DD'
+      ) AS data_inicio,
+
+      TO_CHAR(
+        data_fim,
+        'YYYY-MM-DD'
+      ) AS data_fim,
+
+      total_alunos,
+      total_faltas,
+      porcentagem_presenca,
+      criado_em,
+      dias_aula
+
     FROM ranking_semanal
-    WHERE ($1::int IS NULL OR turma_id = $1)
-      AND ($2::date IS NULL OR data_inicio >= $2)
-      AND ($3::date IS NULL OR data_fim <= $3)
+
+    WHERE
+      ($1::int IS NULL OR turma_id = $1)
+
+      AND (
+        $2::date IS NULL
+        OR data_inicio >= $2::date
+      )
+
+      AND (
+        $3::date IS NULL
+        OR data_inicio <= $3::date
+      )
+
     ORDER BY data_inicio DESC
   `;
 
@@ -64,106 +156,211 @@ async function listarTabela({ turmaId, dataInicio, dataFim }) {
 // =========================
 // 🏆 RANKING (TELA GAMER)
 // =========================
-async function ranking({ tipo = "semanal", dataInicio, dataFim }) {
-  // Se não passar datas, usa mês atual
+async function ranking({
+  tipo = "semanal",
+  dataInicio,
+  dataFim
+}) {
+
+  // 🔥 MÊS ATUAL SEM TIMEZONE
   if (!dataInicio && !dataFim) {
-    const hoje = new Date();
-    dataInicio = new Date(hoje.getFullYear(), hoje.getMonth(), 1).toISOString().split("T")[0]; // 1º dia do mês
-    dataFim = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0).toISOString().split("T")[0]; // último dia do mês
+
+    const datas = obterMesAtual();
+
+    dataInicio = datas.inicio;
+    dataFim = datas.fim;
   }
 
-  // 🔵 SEMANAL – última semana registrada por turma
-if (tipo === "semanal") {
-  const query = `
-    SELECT r.turma_id,
-           t.nome_fantasia,
-           t.foto_url,
-           r.porcentagem_presenca
-    FROM ranking_semanal r
-    JOIN turmas t ON t.id = r.turma_id
-    INNER JOIN (
-      SELECT turma_id, MAX(data_inicio) as ultima_data
-      FROM ranking_semanal
-      GROUP BY turma_id
-    ) ult ON ult.turma_id = r.turma_id AND ult.ultima_data = r.data_inicio
-    ORDER BY r.porcentagem_presenca DESC
-  `;
+  // =========================
+  // 🔵 SEMANAL
+  // =========================
 
-  const result = await pool.query(query);
-  return result.rows;
-}
+  if (tipo === "semanal") {
+
+    const query = `
+      SELECT
+    r.turma_id,
+    t.nome_fantasia,
+    t.foto_url,
+
+    ROUND(
+      r.porcentagem_presenca::numeric,
+      2
+    ) AS porcentagem_presenca
+
+FROM ranking_semanal r
+
+JOIN turmas t
+  ON t.id = r.turma_id
+
+WHERE r.data_inicio = (
+    SELECT MAX(data_inicio)
+    FROM ranking_semanal
+)
+
+ORDER BY porcentagem_presenca DESC;
+    `;
+
+    const result = await pool.query(query);
+
+    return result.rows;
+  }
+
+  // =========================
   // 🟣 MENSAL
+  // =========================
+
   const query = `
     SELECT
       r.turma_id,
+
       t.nome_fantasia,
+
       t.foto_url,
+
       ROUND(
-        (SUM(r.total_alunos * r.dias_aula) - SUM(r.total_faltas)) * 100.0
-        / NULLIF(SUM(r.total_alunos * r.dias_aula), 0),
+        (
+          (
+            SUM(
+              r.total_alunos * r.dias_aula
+            ) - SUM(r.total_faltas)
+          ) * 100.0
+        )
+
+        /
+
+        NULLIF(
+          SUM(
+            r.total_alunos * r.dias_aula
+          ),
+          0
+        ),
+
         2
-      ) as porcentagem_presenca
+      ) AS porcentagem_presenca
+
     FROM ranking_semanal r
-    JOIN turmas t ON t.id = r.turma_id
-    WHERE r.data_inicio >= $1
-      AND r.data_fim <= $2
-    GROUP BY r.turma_id, t.nome_fantasia, t.foto_url
+
+    JOIN turmas t
+      ON t.id = r.turma_id
+
+    WHERE
+      r.data_inicio BETWEEN $1::date AND $2::date
+
+    GROUP BY
+      r.turma_id,
+      t.nome_fantasia,
+      t.foto_url
+
     ORDER BY porcentagem_presenca DESC
   `;
 
-  const result = await pool.query(query, [dataInicio, dataFim]);
+  const result = await pool.query(query, [
+    dataInicio,
+    dataFim
+  ]);
+
   return result.rows;
 }
-// Deletar um registro pelo ID
+
+// =========================
+// 🗑️ DELETAR
+// =========================
 async function deletarPorId(id) {
-  if (!id) throw new Error("id é obrigatório");
+
+  if (!id) {
+    throw new Error("id é obrigatório");
+  }
 
   const query = `
     DELETE FROM ranking_semanal
     WHERE id = $1
-    RETURNING *;
+    RETURNING *
   `;
 
   const result = await pool.query(query, [id]);
-  return result.rows[0]; // retorna o registro deletado
+
+  return result.rows[0];
 }
 
+// =========================
+// 📈 GRÁFICO SEMANAL
+// =========================
 async function buscarGraficoSemanal() {
+
   const query = `
     WITH mes_atual AS (
+
       SELECT COUNT(*) AS total
+
       FROM ranking_semanal
-      WHERE DATE_TRUNC('month', data_inicio) = DATE_TRUNC('month', CURRENT_DATE)
+
+      WHERE DATE_TRUNC(
+        'month',
+        data_inicio
+      ) = DATE_TRUNC(
+        'month',
+        CURRENT_DATE
+      )
     ),
+
     mes_referencia AS (
+
       SELECT
         CASE
-          WHEN (SELECT total FROM mes_atual) > 0
-            THEN DATE_TRUNC('month', CURRENT_DATE)
-          ELSE DATE_TRUNC('month', MAX(data_inicio))
+          WHEN (
+            SELECT total
+            FROM mes_atual
+          ) > 0
+
+          THEN DATE_TRUNC(
+            'month',
+            CURRENT_DATE
+          )
+
+          ELSE DATE_TRUNC(
+            'month',
+            MAX(data_inicio)
+          )
         END AS mes
+
       FROM ranking_semanal
     )
+
     SELECT
       t.nome_fantasia,
+
       r.data_inicio,
-      r.porcentagem_presenca
+
+      ROUND(
+        r.porcentagem_presenca::numeric,
+        2
+      ) AS porcentagem_presenca
+
     FROM ranking_semanal r
+
     JOIN turmas t
       ON t.id = r.turma_id
+
     JOIN mes_referencia m
-      ON DATE_TRUNC('month', r.data_inicio) = m.mes
-    ORDER BY r.data_inicio ASC, r.porcentagem_presenca DESC
+      ON DATE_TRUNC(
+        'month',
+        r.data_inicio
+      ) = m.mes
+
+    ORDER BY
+      r.data_inicio ASC,
+      porcentagem_presenca DESC
   `;
 
   const result = await pool.query(query);
 
   return result.rows;
 }
+
 // =========================
 // 📈 GRÁFICO MENSAL
 // =========================
-
 async function buscarGraficoMensal() {
 
   const query = `
@@ -179,17 +376,24 @@ async function buscarGraficoMensal() {
       ROUND(
         (
           SUM(
-            (r.total_alunos * r.dias_aula)
-            - r.total_faltas
+            (
+              r.total_alunos
+              * r.dias_aula
+            ) - r.total_faltas
           )::numeric
 
           /
 
           NULLIF(
-            SUM(r.total_alunos * r.dias_aula),
+            SUM(
+              r.total_alunos
+              * r.dias_aula
+            ),
             0
           )
+
         ) * 100,
+
         2
       ) AS presenca_media
 
@@ -200,21 +404,32 @@ async function buscarGraficoMensal() {
 
     GROUP BY
       t.nome_fantasia,
-      EXTRACT(MONTH FROM r.data_inicio),
-      TO_CHAR(r.data_inicio, 'Mon')
+      EXTRACT(
+        MONTH FROM r.data_inicio
+      ),
+      TO_CHAR(
+        r.data_inicio,
+        'Mon'
+      )
 
     ORDER BY
       t.nome_fantasia,
-      EXTRACT(MONTH FROM r.data_inicio);
+      EXTRACT(
+        MONTH FROM r.data_inicio
+      )
   `;
 
   const result = await pool.query(query);
 
   return result.rows;
-};
-// src/repositories/rankingRepository.js
+}
 
-async function listarTabelaDashboard(tipo = "semanal") {
+// =========================
+// 📊 DASHBOARD TABELA
+// =========================
+async function listarTabelaDashboard(
+  tipo = "semanal"
+) {
 
   // =========================
   // 🔵 SEMANAL
@@ -224,35 +439,70 @@ async function listarTabelaDashboard(tipo = "semanal") {
 
     const query = `
       WITH mes_atual AS (
+
         SELECT COUNT(*) AS total
+
         FROM ranking_semanal
-        WHERE DATE_TRUNC('month', data_inicio)
-          = DATE_TRUNC('month', CURRENT_DATE)
+
+        WHERE DATE_TRUNC(
+          'month',
+          data_inicio
+        ) = DATE_TRUNC(
+          'month',
+          CURRENT_DATE
+        )
       ),
 
       mes_referencia AS (
+
         SELECT
           CASE
-            WHEN (SELECT total FROM mes_atual) > 0
-              THEN DATE_TRUNC('month', CURRENT_DATE)
-            ELSE DATE_TRUNC('month', MAX(data_inicio))
+
+            WHEN (
+              SELECT total
+              FROM mes_atual
+            ) > 0
+
+            THEN DATE_TRUNC(
+              'month',
+              CURRENT_DATE
+            )
+
+            ELSE DATE_TRUNC(
+              'month',
+              MAX(data_inicio)
+            )
+
           END AS mes
+
         FROM ranking_semanal
       ),
 
       ultima_semana AS (
-        SELECT MAX(data_inicio) AS data
+
+        SELECT
+          MAX(data_inicio) AS data
+
         FROM ranking_semanal
-        WHERE DATE_TRUNC('month', data_inicio) = (
-          SELECT mes FROM mes_referencia
+
+        WHERE DATE_TRUNC(
+          'month',
+          data_inicio
+        ) = (
+          SELECT mes
+          FROM mes_referencia
         )
       )
 
       SELECT *
+
       FROM ranking_semanal
+
       WHERE data_inicio = (
-        SELECT data FROM ultima_semana
+        SELECT data
+        FROM ultima_semana
       )
+
       ORDER BY porcentagem_presenca DESC
     `;
 
@@ -267,27 +517,57 @@ async function listarTabelaDashboard(tipo = "semanal") {
 
   const queryMensal = `
     WITH mes_atual AS (
+
       SELECT COUNT(*) AS total
+
       FROM ranking_semanal
-      WHERE DATE_TRUNC('month', data_inicio)
-        = DATE_TRUNC('month', CURRENT_DATE)
+
+      WHERE DATE_TRUNC(
+        'month',
+        data_inicio
+      ) = DATE_TRUNC(
+        'month',
+        CURRENT_DATE
+      )
     ),
 
     mes_referencia AS (
+
       SELECT
         CASE
-          WHEN (SELECT total FROM mes_atual) > 0
-            THEN DATE_TRUNC('month', CURRENT_DATE)
-          ELSE DATE_TRUNC('month', MAX(data_inicio))
+
+          WHEN (
+            SELECT total
+            FROM mes_atual
+          ) > 0
+
+          THEN DATE_TRUNC(
+            'month',
+            CURRENT_DATE
+          )
+
+          ELSE DATE_TRUNC(
+            'month',
+            MAX(data_inicio)
+          )
+
         END AS mes
+
       FROM ranking_semanal
     )
 
     SELECT *
+
     FROM ranking_semanal
-    WHERE DATE_TRUNC('month', data_inicio) = (
-      SELECT mes FROM mes_referencia
+
+    WHERE DATE_TRUNC(
+      'month',
+      data_inicio
+    ) = (
+      SELECT mes
+      FROM mes_referencia
     )
+
     ORDER BY data_inicio DESC
   `;
 
@@ -295,8 +575,14 @@ async function listarTabelaDashboard(tipo = "semanal") {
     await pool.query(queryMensal);
 
   return resultMensal.rows;
-};
-async function rankingDashboard(tipo = "semanal") {
+}
+
+// =========================
+// 🏆 DASHBOARD RANKING
+// =========================
+async function rankingDashboard(
+  tipo = "semanal"
+) {
 
   // =========================
   // 🔵 SEMANAL
@@ -306,32 +592,64 @@ async function rankingDashboard(tipo = "semanal") {
 
     const query = `
       WITH mes_atual AS (
+
         SELECT COUNT(*) AS total
+
         FROM ranking_semanal
-        WHERE DATE_TRUNC('month', data_inicio)
-          = DATE_TRUNC('month', CURRENT_DATE)
+
+        WHERE DATE_TRUNC(
+          'month',
+          data_inicio
+        ) = DATE_TRUNC(
+          'month',
+          CURRENT_DATE
+        )
       ),
 
       mes_referencia AS (
+
         SELECT
           CASE
-            WHEN (SELECT total FROM mes_atual) > 0
-              THEN DATE_TRUNC('month', CURRENT_DATE)
-            ELSE DATE_TRUNC('month', MAX(data_inicio))
+
+            WHEN (
+              SELECT total
+              FROM mes_atual
+            ) > 0
+
+            THEN DATE_TRUNC(
+              'month',
+              CURRENT_DATE
+            )
+
+            ELSE DATE_TRUNC(
+              'month',
+              MAX(data_inicio)
+            )
+
           END AS mes
+
         FROM ranking_semanal
       ),
 
       ultima_semana AS (
-        SELECT MAX(data_inicio) AS data
+
+        SELECT
+          MAX(data_inicio) AS data
+
         FROM ranking_semanal
-        WHERE DATE_TRUNC('month', data_inicio) = (
-          SELECT mes FROM mes_referencia
+
+        WHERE DATE_TRUNC(
+          'month',
+          data_inicio
+        ) = (
+          SELECT mes
+          FROM mes_referencia
         )
       )
 
       SELECT
         r.turma_id,
+
         t.nome_fantasia,
 
         ROUND(
@@ -367,19 +685,42 @@ async function rankingDashboard(tipo = "semanal") {
 
   const queryMensal = `
     WITH mes_atual AS (
+
       SELECT COUNT(*) AS total
+
       FROM ranking_semanal
-      WHERE DATE_TRUNC('month', data_inicio)
-        = DATE_TRUNC('month', CURRENT_DATE)
+
+      WHERE DATE_TRUNC(
+        'month',
+        data_inicio
+      ) = DATE_TRUNC(
+        'month',
+        CURRENT_DATE
+      )
     ),
 
     mes_referencia AS (
+
       SELECT
         CASE
-          WHEN (SELECT total FROM mes_atual) > 0
-            THEN DATE_TRUNC('month', CURRENT_DATE)
-          ELSE DATE_TRUNC('month', MAX(data_inicio))
+
+          WHEN (
+            SELECT total
+            FROM mes_atual
+          ) > 0
+
+          THEN DATE_TRUNC(
+            'month',
+            CURRENT_DATE
+          )
+
+          ELSE DATE_TRUNC(
+            'month',
+            MAX(data_inicio)
+          )
+
         END AS mes
+
       FROM ranking_semanal
     )
 
@@ -388,12 +729,12 @@ async function rankingDashboard(tipo = "semanal") {
 
       t.nome_fantasia,
 
-      -- 🔥 PRESENÇA PONDERADA
       ROUND(
         (
           (
             SUM(
-              r.total_alunos * r.dias_aula
+              r.total_alunos
+              * r.dias_aula
             ) - SUM(r.total_faltas)
           )::numeric
 
@@ -401,12 +742,14 @@ async function rankingDashboard(tipo = "semanal") {
 
           NULLIF(
             SUM(
-              r.total_alunos * r.dias_aula
+              r.total_alunos
+              * r.dias_aula
             ),
             0
           )
 
         ) * 100,
+
         1
       ) AS porcentagem_presenca,
 
@@ -422,7 +765,10 @@ async function rankingDashboard(tipo = "semanal") {
       ON t.id = r.turma_id
 
     JOIN mes_referencia m
-      ON DATE_TRUNC('month', r.data_inicio) = m.mes
+      ON DATE_TRUNC(
+        'month',
+        r.data_inicio
+      ) = m.mes
 
     GROUP BY
       r.turma_id,
@@ -436,7 +782,6 @@ async function rankingDashboard(tipo = "semanal") {
 
   return resultMensal.rows;
 }
-
 
 module.exports = {
   salvarSemana,
