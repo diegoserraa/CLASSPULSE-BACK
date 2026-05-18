@@ -58,7 +58,11 @@ async function enviarEmailGmailAPI(to, subject, text) {
     },
   });
 }
-
+const emailsResumo = process.env.EMAIL_RESUMO
+  ? process.env.EMAIL_RESUMO
+      .split(',')
+      .map(email => email.trim())
+  : [];
 // ========================================
 // SERVICE
 // ========================================
@@ -152,7 +156,7 @@ ${falhas.length ? falhas.map(f => `- ${f.aluno} (${f.erro})`).join('\n') : '-'}
 
     try {
       await enviarEmailGmailAPI(
-        'diegoserra120@hotmail.com',
+        emailsResumo.join(','),
         `Resumo envio lote ${loteId}`,
         resumo
       );
