@@ -11,7 +11,7 @@ jobs:
       - name: Checkout código
         uses: actions/checkout@v4
         with:
-          path: /var/www/meuapp
+          path: /var/www/classpulse/dev/backend
 
       # Exemplos opcionais, dependendo do seu stack:
       # - name: Instalar dependências
