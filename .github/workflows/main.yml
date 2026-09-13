@@ -10,10 +10,13 @@ jobs:
     steps:
       - name: Checkout código
         uses: actions/checkout@v4
-        with:
-          path: /var/www/classpulse/dev/backend
 
-      # Exemplos opcionais, dependendo do seu stack:
+      - name: Sincronizar com a pasta do app
+        run: |
+          rsync -av --delete \
+            --exclude='.git' \
+            "$GITHUB_WORKSPACE"/ /var/www/classpulse/dev/backend
+
       # - name: Instalar dependências
       #   run: cd /var/www/meuapp && npm install --production
 
