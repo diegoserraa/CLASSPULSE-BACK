@@ -3,6 +3,8 @@ const router = express.Router();
 const authController = require('../controllers/authController');
 const rateLimit = require("express-rate-limit");
 const { verificarToken } = require('../middlewares/authMiddleware');
+const { autorizar } = require('../middlewares/roleMiddleware');
+const ROLES = require('../constants/roles');
 
 // 🔐 Rate limit SOMENTE no login
 const loginLimiter = rateLimit({
@@ -14,11 +16,11 @@ const loginLimiter = rateLimit({
 // 🔓 LOGIN (com proteção)
 router.post('/login', loginLimiter, authController.login);
 
-// 🔐 ROTAS PROTEGIDAS
-router.post('/register', verificarToken, authController.register);
+// 🔐 ROTAS PROTEGIDAS (somente ADMIN)
+router.post('/register', verificarToken, autorizar(ROLES.ADMIN), authController.register);
 
-router.get('/users', verificarToken, authController.getUsers);
+router.get('/users', verificarToken, autorizar(ROLES.ADMIN), authController.getUsers);
 
-router.patch('/users/:id/ativo', verificarToken, authController.toggleAtivo);
+router.patch('/users/:id/ativo', verificarToken, autorizar(ROLES.ADMIN), authController.toggleAtivo);
 
 module.exports = router;

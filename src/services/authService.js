@@ -1,10 +1,19 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
+const validator = require('validator');
 const userRepository = require('../repositories/authRepository');
 
 async function register(nome, email, password) {
   if (!nome || !email || !password) {
     throw new Error('Nome, email e senha são obrigatórios');
+  }
+
+  if (!validator.isEmail(email)) {
+    throw new Error('Email inválido');
+  }
+
+  if (password.length < 8) {
+    throw new Error('Senha deve ter no mínimo 8 caracteres');
   }
 
   const userExists = await userRepository.findByEmail(email);
