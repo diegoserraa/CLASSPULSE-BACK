@@ -15,6 +15,10 @@ const dashboardRoutes = require("./routes/dashboardRoutes");
 
 const app = express();
 
+// Atrás do Nginx: confia no 1º hop pra pegar o IP real do cliente
+// (senão express-rate-limit trata todo mundo como o mesmo IP)
+app.set("trust proxy", 1);
+
 // 🔐 Helmet
 app.use(
   helmet({
