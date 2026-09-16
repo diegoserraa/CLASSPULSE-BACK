@@ -1,8 +1,8 @@
-name: Deploy
+name: Deploy Prod
 
 on:
   push:
-    branches: [ dev ]
+    branches: [ master ]
 
 jobs:
   deploy:
@@ -17,10 +17,4 @@ jobs:
             --exclude='.git' \
             --exclude='.env' \
             --exclude='uploads' \
-            "$GITHUB_WORKSPACE"/ /var/www/classpulse/dev/backend
-
-      # - name: Instalar dependências
-      #   run: cd /var/www/meuapp && npm install --production
-
-      # - name: Reiniciar serviço
-      #   run: sudo systemctl restart meuapp
+            "$GITHUB_WORKSPACE"/ /var/www/classpulse/prod/backend
